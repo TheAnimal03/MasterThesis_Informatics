@@ -37,7 +37,7 @@ A PyTorch implementation of YOLOv4.
 ├── weight                --> darknet2pytorch
 ├── tool
 │   ├── camera.py           a demo camera
-│   ├── coco_annotation.py       coco dataset generator for annotations
+│   ├── coco_annotation.py  coco dataset generator for annotations
 │   ├── config.py
 │   ├── darknet2pytorch.py
 ├── ├── mobilenetv2.py
