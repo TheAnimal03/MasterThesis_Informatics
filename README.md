@@ -21,7 +21,7 @@ A PyTorch implementation of YOLOv4.
 ├── source              collection for OD and KD 
 |   ├── pytorch-YOLOv4  main folder for the implemantation
 ```
-## Code 
+## Code inside pytorch-YOLOv4 
 ```
 ├── README.md
 ├── dataset.py            dataset
