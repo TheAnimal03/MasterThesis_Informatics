@@ -66,11 +66,11 @@ A PyTorch implementation of YOLOv4.
     - cfgmnv2.py for training with MobileNetv2.
     
 ## 2.2 Start training
-For training with Darknet 
+- For training with Darknet 
     ```
      python train.py -g [GPU_ID] -dir [Dataset direction] ...
     ```
-For training with MobileNetv2 
+- For training with MobileNetv2 
     ```
      python trainmnv2.py -g [GPU_ID] -dir [Dataset direction] ...
     ```
