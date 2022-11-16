@@ -14,6 +14,14 @@ A PyTorch implementation of YOLOv4.
 - More details: http://pjreddie.com/darknet/yolo/
 
 # 0. General View over the Architecture 
+## Folders
+```
+├── Literatur           collection for OD and KD 
+├── Vorbereitung        proposal for thesis
+├── source              collection for OD and KD 
+|   ├── pytorch-YOLOv4  main folder for the implemantation
+```
+## Code 
 ```
 ├── README.md
 ├── dataset.py            dataset
