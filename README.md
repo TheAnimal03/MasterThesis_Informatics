@@ -13,7 +13,7 @@ A PyTorch implementation of YOLOv4.
 - Source code yolo PyTorch: https://github.com/AlexeyAB/darknet, https://github.com/Tianxiaomo/pytorch-YOLOv4
 - More details: http://pjreddie.com/darknet/yolo/
 
-# 0. General View over the Architecture 
+# 0. Design Understanding
 ## Folders
 ```
 ├── Literatur           collection for OD and KD 
