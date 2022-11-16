@@ -18,7 +18,7 @@ A PyTorch implementation of YOLOv4.
 ```
 ├── Literatur           collection for OD and KD 
 ├── Vorbereitung        proposal for thesis
-├── source              collection for OD and KD 
+├── source (src)              collection for OD and KD 
 |   ├── pytorch-YOLOv4  main folder for the implemantation
 ```
 ## Code inside pytorch-YOLOv4 
