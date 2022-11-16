@@ -13,10 +13,7 @@ A PyTorch implementation of YOLOv4.
 - Source code yolo PyTorch: https://github.com/AlexeyAB/darknet, https://github.com/Tianxiaomo/pytorch-YOLOv4
 - More details: http://pjreddie.com/darknet/yolo/
 
-- [x] Inference
-- [x] Train
-    - [x] Mosaic
-
+# 0. General View over the Architecture 
 ```
 ├── README.md
 ├── dataset.py            dataset
