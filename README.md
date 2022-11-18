@@ -38,7 +38,8 @@ A PyTorch implementation of YOLOv4.
 ├── tool
 │   ├── camera.py           a demo camera
 │   ├── coco_annotation.py  coco dataset generator for annotations 
-|                           (Use `git submodule update --init submodule-path` to clone folder yolov4-PyTorch)
+|                           (Use `git submodule update --init submodule-path` 
+|                           to clone folder yolov4-PyTorch)
 │   ├── config.py
 │   ├── darknet2pytorch.py
 ├── ├── mobilenetv2.py
