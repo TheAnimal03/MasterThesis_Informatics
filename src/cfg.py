@@ -18,7 +18,7 @@ _BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 Cfg = EasyDict()
 
-Cfg.use_darknet_cfg = True
+Cfg.use_darknet_cfg = False
 Cfg.use_mobilenetv2_cfg = True
 
 Cfg.cfgfile = os.path.join(_BASE_DIR, 'cfg', 'yolov4.cfg')
@@ -55,8 +55,9 @@ Cfg.blur = 0
 Cfg.gaussian = 0
 Cfg.boxes = 60  # box num
 Cfg.TRAIN_EPOCHS = 320
-Cfg.train_label = r'/content/gdrive/MyDrive/Uni/MA/coco/train2017.txt' #os.path.join(_BASE_DIR, 'data', 'train.txt')
-Cfg.val_label = r'/content/gdrive/MyDrive/Uni/MA/coco/val2017.txt' #os.path.join(_BASE_DIR, 'data' ,'val.txt')
+Cfg.model_url= os.path.join(_BASE_DIR, 'cfg', 'mobilenetv2-c5e733a8.pth')
+Cfg.train_label = r'/content/gdrive/MyDrive/Uni/MA/coco/train2017_.txt' #os.path.join(_BASE_DIR, 'data', 'train.txt')
+Cfg.val_label = r'/content/gdrive/MyDrive/Uni/MA/coco/val2017_.txt' #os.path.join(_BASE_DIR, 'data' ,'val.txt')
 Cfg.TRAIN_OPTIMIZER = 'adam'
 '''
 image_path1 x1,y1,x2,y2,id x1,y1,x2,y2,id x1,y1,x2,y2,id ...

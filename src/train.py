@@ -235,12 +235,18 @@ class Yolo_loss(nn.Module):
 
     def forward(self, xin, labels=None):
         loss, loss_xy, loss_wh, loss_obj, loss_cls, loss_l2 = 0, 0, 0, 0, 0, 0
+        #print('Batchsize Test: ', xin[1].size())
         for output_id, output in enumerate(xin):
             batchsize = output.shape[0]
             fsize = output.shape[2]
             n_ch = 5 + self.n_classes
+            #print('Test size: ', batchsize)
+            #print('Anchor: ', output.size())
+
+            
 
             output = output.view(batchsize, self.n_anchors, n_ch, fsize, fsize)
+           # print('Anchor: ', output.size())
             output = output.permute(0, 1, 3, 4, 2)  # .contiguous()
 
             # logistic activation for xy, obj, cls
@@ -362,12 +368,12 @@ def train(model, device, config, epochs=5, batch_size=1, save_cp=True, log_step=
     save_prefix = 'Yolov4_epoch'
     saved_models = deque()
     
-    checkpoint_path = '/content/gdrive/MyDrive/Uni/MA/pytorch-YOLOv4/INTERRUPTED.pth'
+    checkpoint_path = '/content/gdrive/MyDrive/Uni/MA/pytorch-YOLOv4/checkpoints/Yolov4_epoch40.pth'
 
     if path.exists(checkpoint_path):
         print(checkpoint_path)
         checkpoint = torch.load(checkpoint_path)
-        model.load_state_dict(checkpoint['model_state_dict'])
+        model.load_state_dict(checkpoint['model_state_dict'], strict=False)
         optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
         epoch = checkpoint['epoch']
         loss = checkpoint['loss']
@@ -540,6 +546,10 @@ def evaluate(model, data_loader, cfg, device, logger=None, **kwargs):
             img_height, img_width = img.shape[:2]
             # boxes = output[...,:4].copy()  # output boxes in yolo format
             boxes = boxes.squeeze(2).cpu().detach().numpy()
+            test = boxes[...,:2]
+            test1 = boxes[...,2:]
+            print('--------------------', test.shape)
+            print('--------------------', test1.shape)
             boxes[...,2:] = boxes[...,2:] - boxes[...,:2] # Transform [x1, y1, x2, y2] to [x1, y1, w, h]
             boxes[...,0] = boxes[...,0]*img_width
             boxes[...,1] = boxes[...,1]*img_height
