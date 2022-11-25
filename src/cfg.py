@@ -56,8 +56,8 @@ Cfg.gaussian = 0
 Cfg.boxes = 60  # box num
 Cfg.TRAIN_EPOCHS = 320
 Cfg.model_url= os.path.join(_BASE_DIR, 'cfg', 'mobilenetv2-c5e733a8.pth')
-Cfg.train_label = r'/content/gdrive/MyDrive/Uni/MA/coco/train2017_.txt' #os.path.join(_BASE_DIR, 'data', 'train.txt')
-Cfg.val_label = r'/content/gdrive/MyDrive/Uni/MA/coco/val2017_.txt' #os.path.join(_BASE_DIR, 'data' ,'val.txt')
+Cfg.train_label = r'/home/yanicktchenko/Downloads/train2017/train2017_.txt' #os.path.join(_BASE_DIR, 'data', 'train.txt')
+Cfg.val_label = r'/home/yanicktchenko/Downloads/train2017/val2017_.txt' #os.path.join(_BASE_DIR, 'data' ,'val.txt')
 Cfg.TRAIN_OPTIMIZER = 'adam'
 '''
 image_path1 x1,y1,x2,y2,id x1,y1,x2,y2,id x1,y1,x2,y2,id ...
