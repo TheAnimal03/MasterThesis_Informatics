@@ -368,7 +368,7 @@ def train(model, device, config, epochs=5, batch_size=1, save_cp=True, log_step=
     save_prefix = 'Yolov4_epoch'
     saved_models = deque()
     
-    checkpoint_path = '/content/gdrive/MyDrive/Uni/MA/pytorch-YOLOv4/checkpoints/Yolov4_epoch40.pth'
+    checkpoint_path = '/content/gdrive/MyDrive/Uni/MA/pytorch-YOLOv4/checkpoints/Yolov4_epoch37.pth'
 
     if path.exists(checkpoint_path):
         print(checkpoint_path)
@@ -435,7 +435,7 @@ def train(model, device, config, epochs=5, batch_size=1, save_cp=True, log_step=
 
                 pbar.update(images.shape[0])
 
-            if cfg.use_darknet_cfg:
+            if cfg.use_darknet_cfg==False:
                 eval_model = Darknet(cfg.cfgfile, inference=True)
             else:
                 eval_model = Yolov4(cfg.pretrained, n_classes=cfg.classes, inference=True)
@@ -444,7 +444,7 @@ def train(model, device, config, epochs=5, batch_size=1, save_cp=True, log_step=
                 eval_model.load_state_dict(model.module.state_dict())
                 eval_model.load_state_dict(model.module.state_dict())
             else:
-                eval_model.load_state_dict(model.state_dict())
+                eval_model.load_state_dict(model.state_dict(), strict=False)
             eval_model.to(device)
             evaluator = evaluate(eval_model, val_loader, config, device)
             del eval_model
@@ -548,8 +548,8 @@ def evaluate(model, data_loader, cfg, device, logger=None, **kwargs):
             boxes = boxes.squeeze(2).cpu().detach().numpy()
             test = boxes[...,:2]
             test1 = boxes[...,2:]
-            print('--------------------', test.shape)
-            print('--------------------', test1.shape)
+            #print('--------------------', test.shape)
+            #print('--------------------', test1.shape)
             boxes[...,2:] = boxes[...,2:] - boxes[...,:2] # Transform [x1, y1, x2, y2] to [x1, y1, w, h]
             boxes[...,0] = boxes[...,0]*img_width
             boxes[...,1] = boxes[...,1]*img_height
