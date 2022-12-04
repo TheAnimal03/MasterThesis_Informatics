@@ -3,6 +3,7 @@ from torch import nn
 import torch.nn.functional as F
 from tool.torch_utils import *
 from tool.yolo_layer import YoloLayer
+from tool.mnv2 import _BuildMobilenetV2
 
 
 class Mish(torch.nn.Module):
@@ -235,6 +236,16 @@ class DownSample5(nn.Module):
         x5 = self.conv5(x4)
         return x5
 
+class MobileNetV2(nn.Module):
+    def __init__(self, pretrained = False):
+        super(MobileNetV2, self).__init__()
+        self.model = _BuildMobilenetV2(pretrained=pretrained, resume=False)
+
+    def forward(self, x):
+        out3 = self.model.features[:7](x)
+        out4 = self.model.features[7:14](out3)
+        out5 = self.model.features[14:18](out4)
+        return out3, out4, out5
 
 class Neck(nn.Module):
     def __init__(self, inference=False):
@@ -407,18 +418,24 @@ class Yolov4Head(nn.Module):
 
 
 class Yolov4(nn.Module):
-    def __init__(self, yolov4conv137weight=None, n_classes=80, inference=False):
+    def __init__(self, yolov4conv137weight=None, n_classes=80, inference=False, backbone = 'mobilenetv2'):
         super().__init__()
 
         output_ch = (4 + 1 + n_classes) * 3
 
         # backbone
-        self.down1 = DownSample1()
-        self.down2 = DownSample2()
-        self.down3 = DownSample3()
-        self.down4 = DownSample4()
-        self.down5 = DownSample5()
-        
+
+        if backbone == 'darknet':
+            self.down1 = DownSample1()
+            self.down2 = DownSample2()
+            self.down3 = DownSample3()
+            self.down4 = DownSample4()
+            self.down5 = DownSample5() 
+        else:
+            backbonev2 = MobileNetV2()
+            self.down3 = backbonev2[0]
+            self.down4 = backbonev2[1]
+            self.down5 = backbonev2[2]      
         # neck
         self.neck = Neck(inference)
         # yolov4conv137
@@ -438,18 +455,25 @@ class Yolov4(nn.Module):
 
 
     def forward(self, input):
-        d1 = self.down1(input)
-        d2 = self.down2(d1)
-        d3 = self.down3(d2)
-        d4 = self.down4(d3)
-        d5 = self.down5(d4)
+        if self.backbone == 'darknet': 
+            d1 = self.down1(input)
+            d2 = self.down2(d1)
+            d3 = self.down3(d2)
+            d4 = self.down4(d3)
+            d5 = self.down5(d4)
 
-        print('Test downsampling: ', d1)
+            print('Test downsampling: ', d1)
 
-        x20, x13, x6 = self.neck(d5, d4, d3)
-
+            x20, x13, x6 = self.neck(d5, d4, d3)
+        else:
+            d3 = self.down3
+            d4 = self.down4
+            d5 = self.down5
+            x20, x13, x6 = self.neck(d5, d4, d3)
+        print(f'x20--{x20}, x13---{x13}, x6---{x6}')
         output = self.head(x20, x13, x6)
         return output
+        
 
 
 if __name__ == "__main__":

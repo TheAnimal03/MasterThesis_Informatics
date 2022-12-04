@@ -438,7 +438,8 @@ def train(model, device, config, epochs=5, batch_size=1, save_cp=True, log_step=
             if cfg.use_darknet_cfg==False:
                 eval_model = Darknet(cfg.cfgfile, inference=True)
             else:
-                eval_model = Yolov4(cfg.pretrained, n_classes=cfg.classes, inference=True)
+                print('---------------------------- HALLO')
+                eval_model = Yolov4(cfg.pretrained, n_classes=cfg.classes, inference=True, backbone = 'darknet')
             # eval_model = Yolov4(yolov4conv137weight=None, n_classes=config.classes, inference=True)
             if torch.cuda.device_count() > 1:
                 eval_model.load_state_dict(model.module.state_dict())
@@ -486,7 +487,7 @@ def train(model, device, config, epochs=5, batch_size=1, save_cp=True, log_step=
                     pass
                 save_path = os.path.join(config.checkpoints, f'{save_prefix}{epoch + 1}.pth')
                 if isinstance(model, torch.nn.DataParallel):
-                    torch.save(model.moduel,{
+                    torch.save(model.modules,{
                     'epoch': epoch + 1,
                     'model_state_dict': model.state_dict(),
                     'optimizer_state_dict': optimizer.state_dict(),
@@ -673,10 +674,10 @@ if __name__ == "__main__":
     print ('device: ', device)
     logging.info(f'Using device {device}')
 
-    if cfg.use_darknet_cfg:
+    if cfg.use_darknet_cfg==False:
         model = Darknet(cfg.cfgfile)
     else:
-        model = Yolov4(cfg.pretrained, n_classes=cfg.classes)
+        model = Yolov4(cfg.pretrained, n_classes=cfg.classes,  backbone = 'darknet')
 
     if torch.cuda.device_count() > 1:
         model = torch.nn.DataParallel(model)

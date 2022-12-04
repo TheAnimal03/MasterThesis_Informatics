@@ -31,11 +31,12 @@ from easydict import EasyDict as edict
 from dataset import Yolo_dataset
 from torch import optim
 from torch.nn import functional as F
-from cfgmnv2 import Cfg
-from models import Yolov4
+from cfg import Cfg
+from modelsv2 import Yolov4
 # from tool.darknet2pytorch import Darknet
 #from tool.MobileNetV2 import *
 from tool.mnv2 import _BuildMobilenetV2
+from tool.mobilenet2yolo import YoloBody
 from tool.darknet2pytorch import Darknet
 from tool.tv_reference.utils import collate_fn as val_collate
 from tool.tv_reference.coco_utils import convert_to_coco_api
@@ -244,14 +245,15 @@ class Yolo_loss(nn.Module):
             batchsize = output.shape[0]
             fsize = output.shape[2]
             n_ch = 5 + self.n_classes
-            print('Test size: ', batchsize)
-            print('Anchor: ', output.size())
+            #print('Test size: ', batchsize)
+            #print('Anchor: ', output.size())
 
             
-
+            print('Anchor-----------------: ', output.size())
             output = output.view(batchsize, self.n_anchors, n_ch, fsize, fsize)
-            print('Anchor: ', output.size())
+            print('Anchor-----------: ', output.size())
             output = output.permute(0, 1, 3, 4, 2)  # .contiguous()
+            
 
             # logistic activation for xy, obj, cls
             output[..., np.r_[:2, 4:n_ch]] = torch.sigmoid(output[..., np.r_[:2, 4:n_ch]])
@@ -299,7 +301,7 @@ def collate(batch):
     return images, bboxes
 
 
-def train(model, device, config, epochs=5, batch_size=1, save_cp=True, resume=False, log_step=20, img_scale=0.5):
+def train(model, device, config, anchors_mask, num_classes, epochs=5, batch_size=1, save_cp=True, resume=False, log_step=20, img_scale=0.5):
     train_dataset = Yolo_dataset(config.train_label, config, train=True)
     val_dataset = Yolo_dataset(config.val_label, config, train=False)
 
@@ -348,31 +350,62 @@ def train(model, device, config, epochs=5, batch_size=1, save_cp=True, resume=Fa
         else:
             factor = 0.01
         return factor
+    #   判断当前batch_size，自适应调整学习率
+    #-------------------------------------------------------------------#
+    nbs             = 64
+    optimizer_type  = "adam" 
+    Init_lr             = 1e-2
+    Min_lr              = Init_lr * 0.01
+    
+    lr_limit_max    = 1e-3 if optimizer_type in ['adam', 'adamw'] else 5e-2
+    lr_limit_min    = 3e-4 if optimizer_type in ['adam', 'adamw'] else 5e-4
+    Init_lr_fit     = min(max(batch_size / nbs * Init_lr, lr_limit_min), lr_limit_max)
+    Min_lr_fit      = min(max(batch_size / nbs * Min_lr, lr_limit_min * 1e-2), lr_limit_max * 1e-2)
+    weight_decay        = 5e-4
 
-    if config.TRAIN_OPTIMIZER.lower() == 'adam':
-        optimizer = optim.Adam(
-            model.parameters(),
-            lr=config.learning_rate / config.batch,
-            betas=(0.9, 0.999),
-            eps=1e-08,
-        )
-    elif config.TRAIN_OPTIMIZER.lower() == 'sgd':
-        optimizer = optim.SGD(
-            params=model.parameters(),
-            lr=config.learning_rate / config.batch,
-            momentum=config.momentum,
-            weight_decay=config.decay,
-        )
+    pg0, pg1, pg2 = [], [], []  
+    for k, v in model.named_modules():
+        if hasattr(v, "bias") and isinstance(v.bias, nn.Parameter):
+            pg2.append(v.bias)    
+        if isinstance(v, nn.BatchNorm2d) or "bn" in k:
+            pg0.append(v.weight)    
+        elif hasattr(v, "weight") and isinstance(v.weight, nn.Parameter):
+            pg1.append(v.weight)   
+    optimizer = {
+        'adam'  : optim.Adam(pg0, Init_lr_fit, betas = (config.momentum, 0.999)),
+        'adamw' : optim.AdamW(pg0, Init_lr_fit, betas = (config.momentum, 0.999)),
+        'sgd'   : optim.SGD(pg0, Init_lr_fit, momentum = config.momentum, nesterov=True)
+    }[optimizer_type]
+    optimizer.add_param_group({"params": pg1, "weight_decay": weight_decay})
+    optimizer.add_param_group({"params": pg2})
+    print(optimizer)
+
+
+    # if config.TRAIN_OPTIMIZER.lower() == 'adam':
+    #     optimizer = optim.Adam(
+    #         model.parameters(),
+    #         lr=config.learning_rate / config.batch,
+    #         betas=(0.9, 0.999),
+    #         eps=1e-08,
+    #     )
+    # elif config.TRAIN_OPTIMIZER.lower() == 'sgd':
+    #     optimizer = optim.SGD(
+    #         params=model.parameters(),
+    #         lr=config.learning_rate / config.batch,
+    #         momentum=config.momentum,
+    #         weight_decay=config.decay,
+    #     )
     scheduler = optim.lr_scheduler.LambdaLR(optimizer, burnin_schedule)
 
     criterion = Yolo_loss(device=device, batch=config.batch // config.subdivisions, n_classes=config.classes)
+    
     # scheduler = ReduceLROnPlateau(optimizer, mode='max', verbose=True, patience=6, min_lr=1e-7)
     # scheduler = CosineAnnealingWarmRestarts(optimizer, 0.001, 1e-6, 20)
 
     save_prefix = 'Yolov4_epoch'
     saved_models = deque()
     
-    checkpoint_path = '/content/gdrive/MyDrive/Uni/MA/pytorch-YOLOv4/checkpoints/Yolov4_epoch26.pth'
+    checkpoint_path = '/content/gdrive/MyDrive/Uni/MA/pytorch-YOLOv4/checkpoints/Yoolov4_epoch26.pth'
 
     if path.exists(checkpoint_path):
         print(checkpoint_path)
@@ -439,19 +472,20 @@ def train(model, device, config, epochs=5, batch_size=1, save_cp=True, resume=Fa
 
                 pbar.update(images.shape[0])
 
-            # if cfg.use_darknet_cfg:
-            #     eval_model = Darknet(cfg.cfgfile, inference=True)
-            if cfg.use_mobilenetv2_cfg :
+            if cfg.use_darknet_cfg:
+                 eval_model = Darknet(cfg.cfgfile, inference=True)
+            elif cfg.use_mobilenetv2_cfg :
               #model_url = 'https://www.dropbox.com/s/47tyzpofuuyyv1b/mobilenetv2_1.0-f2a8633.pth.tar?dl=1'
               model_url = '/content/gdrive/MyDrive/Uni/MA/pytorch-YOLOv4/cfg/mobilenetv2-c5e733a8.pth'
-              #print('This is a test', cfg.model_url)
+              pretrained = False
+              print('This is a test', model_url)
               #eval_model = MobileNetV2(model_url)
-              eval_model = _BuildMobilenetV2(
-                  weight_path= model_url, resume=resume
-              )
+              eval_model = YoloBody(anchors_mask, num_classes, wpath= model_url, backbone = backbone, Resume = pretrained)
               # print('This is a test', eval_model)
             else:
-                eval_model = Yolov4(cfg.pretrained, n_classes=cfg.classes, inference=True)
+                
+                model_url = '/content/gdrive/MyDrive/Uni/MA/pytorch-YOLOv4/cfg/mobilenetv2-c5e733a8.pth'
+                eval_model = Yolov4(pretrained=model_url, n_classes=cfg.classes, inference=True, backbone = 'mobilenetv2')
             # eval_model = Yolov4(yolov4conv137weight=None, n_classes=config.classes, inference=True)
             if torch.cuda.device_count() > 1:
                 eval_model.load_state_dict(model.module.state_dict())
@@ -562,8 +596,8 @@ def evaluate(model, data_loader, cfg, device, logger=None, **kwargs):
             boxes = boxes.squeeze(2).cpu().detach().numpy()
             test = boxes[...,:-2]
             test1 = boxes[...,2:]
-            print('--------------------', test.shape)
-            print('--------------------', test1.shape)
+            #print('--------------------', test.shape)
+            #print('--------------------', test1.shape)
             boxes[...,2:] = boxes[...,2:] - boxes[...,:-2] # Transform [x1, y1, x2, y2] to [x1, y1, w, h]
             boxes[...,0] = boxes[...,0]*img_width
             boxes[...,1] = boxes[...,1]*img_height
@@ -689,22 +723,28 @@ if __name__ == "__main__":
 
     if cfg.use_darknet_cfg:
         model = Darknet(cfg.cfgfile)
+        print('used model = Darknet')
     elif cfg.use_mobilenetv2_cfg :
         #model_url = 'https://www.dropbox.com/s/47tyzpofuuyyv1b/mobilenetv2_1.0-f2a8633.pth.tar?dl=1'
         model_url = '/content/gdrive/MyDrive/Uni/MA/pytorch-YOLOv4/cfg/mobilenetv2-c5e733a8.pth'
         #eval_modeel = MobileNetV2(model_url)
-        eval_model = _BuildMobilenetV2(
+        model = _BuildMobilenetV2(
             weight_path= model_url, resume=False
         )
+        print('used model = Mobilenet')
     else:
-        model = Yolov4(cfg.pretrained, n_classes=cfg.classes)
+        backbone = 'darknet'
+        model = Yolov4(cfg.pretrained, n_classes=cfg.classes, backbone = backbone)
+        print(f'used model = {backbone}')
 
     if torch.cuda.device_count() > 1:
         model = torch.nn.DataParallel(model)
     model.to(device=device)
 
     try:
-        train(model=model,
+        train(anchors_mask = [[6, 7, 8], [3, 4, 5], [0, 1, 2]], 
+              num_classes=80,
+              model=model,
               config=cfg,
               epochs=cfg.TRAIN_EPOCHS,
               device=device, )
