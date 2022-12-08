@@ -7,12 +7,12 @@ import torch.nn.functional as F
 # from .densenet import _Transition, densenet121, densenet169, densenet201
 # from .ghostnet import ghostnet
 # from .mobilenet_v1 import mobilenet_v1
-from .mnv2 import _BuildMobilenetV2
+from .mnv2 import mobilenet_v2
 
 class MobileNetV2(nn.Module):
     def __init__(self, pretrained = False):
         super(MobileNetV2, self).__init__()
-        self.model = _BuildMobilenetV2(pretrained=pretrained)
+        self.model = mobilenet_v2(pretrained=pretrained)
 
     def forward(self, x):
         out3 = self.model.features[:7](x)
@@ -119,7 +119,7 @@ class YoloBody(nn.Module):
             #---------------------------------------------------#   
             #   52,52,32；26,26,92；13,13,320
             #---------------------------------------------------#
-            self.backbone   = _BuildMobilenetV2(weight_path = wpath, resume=pretrained)
+            self.backbone   = mobilenet_v2(weight_path = wpath, resume=pretrained)
             in_filters      = [32, 96, 320]
 
         self.conv1           = make_three_conv([512, 1024], in_filters[2])

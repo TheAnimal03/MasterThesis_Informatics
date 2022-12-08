@@ -35,7 +35,7 @@ from cfg import Cfg
 from modelsv2 import Yolov4
 # from tool.darknet2pytorch import Darknet
 #from tool.MobileNetV2 import *
-from tool.mnv2 import _BuildMobilenetV2
+from tool.mnv2 import mobilenet_v2
 from tool.mobilenet2yolo import YoloBody
 from tool.darknet2pytorch import Darknet
 from tool.tv_reference.utils import collate_fn as val_collate
@@ -716,6 +716,7 @@ if __name__ == "__main__":
     logging = init_logger(log_dir='log')
     cfg = get_args(**Cfg)
     os.environ["CUDA_VISIBLE_DEVICES"] = cfg.gpu
+    anchors_mask = [[6, 7, 8], [3, 4, 5], [0, 1, 2]]
     print('Test: ', torch.cuda.is_available())
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print ('device: ', device)
@@ -728,9 +729,7 @@ if __name__ == "__main__":
         #model_url = 'https://www.dropbox.com/s/47tyzpofuuyyv1b/mobilenetv2_1.0-f2a8633.pth.tar?dl=1'
         model_url = '/content/gdrive/MyDrive/Uni/MA/pytorch-YOLOv4/cfg/mobilenetv2-c5e733a8.pth'
         #eval_modeel = MobileNetV2(model_url)
-        model = _BuildMobilenetV2(
-            weight_path= model_url, resume=False
-        )
+        model = YoloBody(anchors_mask=anchors_mask, num_classes=80, wpath= model_url, backbone='mobilenet', pretrained=True)
         print('used model = Mobilenet')
     else:
         backbone = 'darknet'

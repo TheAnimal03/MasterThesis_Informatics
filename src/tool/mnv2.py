@@ -1,6 +1,5 @@
-"""
-Reference : https://github.com/d-li14/mobilenetv2.pytorch/blob/master/models/imagenet/mobilenetv2.py
-"""
+# Reference : https://github.com/d-li14/mobilenetv2.pytorch/blob/master/models/imagenet/mobilenetv2.py
+
 import torch
 import torch.nn as nn
 import math
@@ -232,7 +231,7 @@ class MobilenetV2(nn.Module):
         return self.__extractor(x)
 
 
-def _BuildMobilenetV2(weight_path, resume):
+def mobilenet_v2(weight_path, resume):
     model = MobilenetV2(weight_path=weight_path, resume=resume)
 
     return model #, model.feature_channels[-3:]

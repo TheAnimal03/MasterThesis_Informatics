@@ -235,17 +235,18 @@ class Yolo_loss(nn.Module):
 
     def forward(self, xin, labels=None):
         loss, loss_xy, loss_wh, loss_obj, loss_cls, loss_l2 = 0, 0, 0, 0, 0, 0
-        #print('Batchsize Test: ', xin[1].size())
+        print('Batchsize Test: ', xin[1].shape)
         for output_id, output in enumerate(xin):
             batchsize = output.shape[0]
             fsize = output.shape[2]
             n_ch = 5 + self.n_classes
             #print('Test size: ', batchsize)
-            #print('Anchor: ', output.size())
+            print('Anchor: ', output.size())
 
             
 
             output = output.view(batchsize, self.n_anchors, n_ch, fsize, fsize)
+            print('{0}, {1}, {2}, {3}'.format(batchsize, self.n_anchors, fsize, n_ch))
            # print('Anchor: ', output.size())
             output = output.permute(0, 1, 3, 4, 2)  # .contiguous()
 
@@ -362,6 +363,7 @@ def train(model, device, config, epochs=5, batch_size=1, save_cp=True, log_step=
     scheduler = optim.lr_scheduler.LambdaLR(optimizer, burnin_schedule)
 
     criterion = Yolo_loss(device=device, batch=config.batch // config.subdivisions, n_classes=config.classes)
+    print(criterion)
     # scheduler = ReduceLROnPlateau(optimizer, mode='max', verbose=True, patience=6, min_lr=1e-7)
     # scheduler = CosineAnnealingWarmRestarts(optimizer, 0.001, 1e-6, 20)
 
@@ -400,6 +402,8 @@ def train(model, device, config, epochs=5, batch_size=1, save_cp=True, log_step=
                 bboxes = bboxes.to(device=device)
 
                 bboxes_pred = model(images)
+                for o in bboxes_pred:
+                    print(f'model output -----------------{o.shape}')
                 loss, loss_xy, loss_wh, loss_obj, loss_cls, loss_l2 = criterion(bboxes_pred, bboxes)
                 # loss = loss / config.subdivisions
                 loss.backward()
@@ -438,8 +442,7 @@ def train(model, device, config, epochs=5, batch_size=1, save_cp=True, log_step=
             if cfg.use_darknet_cfg==False:
                 eval_model = Darknet(cfg.cfgfile, inference=True)
             else:
-                print('---------------------------- HALLO')
-                eval_model = Yolov4(cfg.pretrained, n_classes=cfg.classes, inference=True, backbone = 'darknet')
+                eval_model = Yolov4(cfg.pretrained, n_classes=cfg.classes, inference=True)
             # eval_model = Yolov4(yolov4conv137weight=None, n_classes=config.classes, inference=True)
             if torch.cuda.device_count() > 1:
                 eval_model.load_state_dict(model.module.state_dict())
@@ -487,7 +490,7 @@ def train(model, device, config, epochs=5, batch_size=1, save_cp=True, log_step=
                     pass
                 save_path = os.path.join(config.checkpoints, f'{save_prefix}{epoch + 1}.pth')
                 if isinstance(model, torch.nn.DataParallel):
-                    torch.save(model.modules,{
+                    torch.save(model.models,{
                     'epoch': epoch + 1,
                     'model_state_dict': model.state_dict(),
                     'optimizer_state_dict': optimizer.state_dict(),
@@ -677,7 +680,7 @@ if __name__ == "__main__":
     if cfg.use_darknet_cfg==False:
         model = Darknet(cfg.cfgfile)
     else:
-        model = Yolov4(cfg.pretrained, n_classes=cfg.classes,  backbone = 'darknet')
+        model = Yolov4(cfg.pretrained, n_classes=cfg.classes)
 
     if torch.cuda.device_count() > 1:
         model = torch.nn.DataParallel(model)
