@@ -350,7 +350,7 @@ def train(model, device, config, anchors_mask, num_classes, epochs=5, batch_size
         else:
             factor = 0.01
         return factor
-    #   判断当前batch_size，自适应调整学习率
+    #   Determine the current batch_size and adjust the learning rate adaptively
     #-------------------------------------------------------------------#
     nbs             = 64
     optimizer_type  = "adam" 
@@ -435,8 +435,10 @@ def train(model, device, config, anchors_mask, num_classes, epochs=5, batch_size
 
                 images = images.to(device=device, dtype=torch.float32)
                 bboxes = bboxes.to(device=device)
+                print(f'-----------{bboxes.shape}')
 
                 bboxes_pred = model(images)
+                print(f'BB------------------{bboxes_pred[0].shape}')
                 loss, loss_xy, loss_wh, loss_obj, loss_cls, loss_l2 = criterion(bboxes_pred, bboxes)
                 # loss = loss / config.subdivisions
                 loss.backward()
@@ -689,7 +691,7 @@ def init_logger(log_file=None, log_dir=None, log_level=logging.INFO, mode='w', s
     if not os.path.exists(log_dir):
         os.makedirs(log_dir)
     log_file = os.path.join(log_dir, log_file)
-    # 此处不能使用logging输出
+    # Logging output cannot be used here
     print('log file path:' + log_file)
 
     logging.basicConfig(level=logging.DEBUG,

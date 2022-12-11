@@ -152,6 +152,7 @@ class YoloBody(nn.Module):
     def forward(self, x):
         #  backbone
         x2, x1, x0 = self.backbone(x)
+        print(f'BB X1------------------{x0.shape}')
 
         # 13,13,1024 -> 13,13,512 -> 13,13,1024 -> 13,13,512 -> 13,13,2048 
         P5 = self.conv1(x0)

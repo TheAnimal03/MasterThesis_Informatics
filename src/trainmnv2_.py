@@ -357,7 +357,7 @@ def train(model, device, config, anchors_mask, num_classes, epochs=5, batch_size
         else:
             factor = 0.01
         return factor
-    #   判断当前batch_size，自适应调整学习率
+    #   Determine the current batch_size and adjust the learning rate adaptively
     #-------------------------------------------------------------------#
     nbs             = 64
     optimizer_type  = "adam" 
@@ -484,8 +484,8 @@ def train(model, device, config, anchors_mask, num_classes, epochs=5, batch_size
             if cfg.use_darknet_cfg:
                  eval_model = Darknet(cfg.cfgfile, inference=True)
             elif cfg.use_mobilenetv2_cfg :
-              #model_url = 'https://www.dropbox.com/s/47tyzpofuuyyv1b/mobilenetv2_1.0-f2a8633.pth.tar?dl=1'
-              model_url = None
+              model_url = 'https://www.dropbox.com/s/47tyzpofuuyyv1b/mobilenetv2_1.0-f2a8633.pth.tar?dl=1'
+              #model_url = None
               pretrained = False
               print('This is a test', model_url)
               #eval_model = MobileNetV2(model_url)
@@ -736,7 +736,7 @@ if __name__ == "__main__":
         print('used model = Darknet')
     elif cfg.use_mobilenetv2_cfg :
         #model_url = 'https://www.dropbox.com/s/47tyzpofuuyyv1b/mobilenetv2_1.0-f2a8633.pth.tar?dl=1'
-        model_url = None #'/content/gdrive/MyDrive/Uni/MA/pytorch-YOLOv4/cfg/mobilenetv2-c5e733a8.pth'
+        model_url = '/content/gdrive/MyDrive/Uni/MA/pytorch-YOLOv4/cfg/mobilenetv2-c5e733a8.pth'
         #eval_modeel = MobileNetV2(model_url)
         #model = mobilenet_v2(pretrained=True)  
         model = YoloBody(anchors_mask=anch_masks, num_classes=80, wpath= model_url, backbone='mobilenet', pretrained=True)      
