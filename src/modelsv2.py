@@ -3,7 +3,7 @@ from torch import nn
 import torch.nn.functional as F
 from tool.torch_utils import *
 from tool.yolo_layer import YoloLayer
-from tool.mnv2 import _BuildMobilenetV2
+from tool.mnv2 import mobilenet_v2 as _BuildMobilenetV2
 
 
 class Mish(torch.nn.Module):
