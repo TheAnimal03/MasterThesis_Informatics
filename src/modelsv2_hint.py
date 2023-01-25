@@ -7,7 +7,7 @@ from tool.mnv2 import mobilenet_v2
 from collections import OrderedDict
 
 #---------------------------------------------------#
-#   Mish Activation
+#   Mish activation
 #---------------------------------------------------#
 class Mish(torch.nn.Module):
     def __init__(self):
@@ -47,9 +47,9 @@ class Upsample(nn.Module):
         else:
             return F.interpolate(x, size=(target_size[2], target_size[3]), mode='nearest')
 
-#--------------------------------------------------------#
-#   Block: Convolution, Batch normalization, Activation
-#--------------------------------------------------------#
+#---------------------------------------------------#
+#   Block convlution Batch-normalization activation
+#---------------------------------------------------#
 class Conv_Bn_Activation(nn.Module):
     def __init__(self, in_channels, out_channels, kernel_size, stride, activation, bn=True, bias=False):
         super().__init__()
@@ -79,9 +79,9 @@ class Conv_Bn_Activation(nn.Module):
             x = l(x)
         return x
 
-#--------------------------------------------------------#
+#---------------------------------------------------#
 #   Residual Block
-#--------------------------------------------------------#
+#---------------------------------------------------#
 class ResBlock(nn.Module):
     """
     Sequential residual blocks each of which consists of \
@@ -110,9 +110,9 @@ class ResBlock(nn.Module):
             x = x + h if self.shortcut else h
         return x
 
-#--------------------------------------------------------#
+#---------------------------------------------------#
 #   Downsampling
-#--------------------------------------------------------#
+#---------------------------------------------------#
 class DownSample1(nn.Module):
     def __init__(self):
         super().__init__()
@@ -152,7 +152,6 @@ class DownSample1(nn.Module):
         x7 = torch.cat([x7, x3], dim=1)
         x8 = self.conv8(x7)
         return x8
-
 
 class DownSample2(nn.Module):
     def __init__(self):
@@ -253,10 +252,9 @@ class DownSample5(nn.Module):
         x5 = self.conv5(x4)
         return x5
 
-
-#--------------------------------------------------------#
+#---------------------------------------------------#
 #   Neck
-#--------------------------------------------------------#
+#---------------------------------------------------#
 class Neck(nn.Module):
     def __init__(self, inference=False):
         
@@ -271,7 +269,6 @@ class Neck(nn.Module):
         self.maxpool2 = nn.MaxPool2d(kernel_size=9, stride=1, padding=9 // 2)
         self.maxpool3 = nn.MaxPool2d(kernel_size=13, stride=1, padding=13 // 2)
 
-        # R -1 -3 -5 -6
         # SPP
         self.conv4 = Conv_Bn_Activation(2048, 512, 1, 1, 'leaky')
         self.conv5 = Conv_Bn_Activation(512, 1280, 3, 1, 'leaky')
@@ -388,9 +385,6 @@ def make_five_conv(filters_list, in_filters):
     )
     return m
 
-#--------------------------------------------------------#
-#   Simple conv2D
-#--------------------------------------------------------#
 def conv2d(filter_in, filter_out, kernel_size, groups=1, stride=1):
     pad = (kernel_size - 1) // 2 if kernel_size else 0
     return nn.Sequential(OrderedDict([
@@ -398,10 +392,6 @@ def conv2d(filter_in, filter_out, kernel_size, groups=1, stride=1):
         ("bn", nn.BatchNorm2d(filter_out)),
         ("relu", nn.ReLU6(inplace=True)),
     ]))
-
-#--------------------------------------------------------#
-#   YOLO Head
-#--------------------------------------------------------#
 class Yolov4Head(nn.Module):
     def __init__(self, output_ch, n_classes, inference=False):
         super().__init__()
@@ -452,8 +442,6 @@ class Yolov4Head(nn.Module):
     def forward(self,input1, input2, input3):
         x1 = self.conv1(input1)
         x2 = self.conv2(x1)
-        #print('=================x2', x2.shape)
-
         x3 = self.conv3(input1)
         # R -1 -16
         x3 = torch.cat([x3, input2], dim=1)
@@ -464,8 +452,6 @@ class Yolov4Head(nn.Module):
         x8 = self.conv8(x7)
         x9 = self.conv9(x8)
         x10 = self.conv10(x9)
-
-        # R -4
         x11 = self.conv11(x8)
         # R -1 -37
         x11 = torch.cat([x11, input3], dim=1)
@@ -476,7 +462,9 @@ class Yolov4Head(nn.Module):
         x15 = self.conv15(x14)
         x16 = self.conv16(x15)
         x17 = self.conv17(x16)
-        x18 = self.conv18(x17)      
+        x18 = self.conv18(x17)
+        a = []        
+
         if self.inference:
             y1 = self.yolo1(x2)
             y2 = self.yolo2(x10)
@@ -484,13 +472,15 @@ class Yolov4Head(nn.Module):
 
             return get_region_boxes([y1, y2, y3])
         else:
-             return [x2, x10, x18]
+
+             return x2, x10, x18
+
 #---------------------------------------------------#
 #   SPP
 #---------------------------------------------------#
-class SpatialPyramidPooling(nn.Module):
+class Spp(nn.Module):
     def __init__(self, pool_sizes=[5, 9, 13]):
-        super(SpatialPyramidPooling, self).__init__()
+        super(Spp, self).__init__()
 
         self.maxpools = nn.ModuleList([nn.MaxPool2d(pool_size, 1, pool_size//2) for pool_size in pool_sizes])
 
@@ -499,11 +489,9 @@ class SpatialPyramidPooling(nn.Module):
         features = torch.cat(features + [x], dim=1)
 
         return features
-#---------------------------------------------------#
-#   YOLO Boby 
-#---------------------------------------------------#
+
 class Yolov4(nn.Module):
-    def __init__(self, yolov4conv137weight=None, n_classes=80, inference=False, wpath=None,pretrained=False):
+    def __init__(self, n_classes=80, inference=False, wpath=None,pretrained=False):
         super().__init__()
         self.model = mobilenet_v2(weight_path = wpath, resume=pretrained)
         output_ch = (4 + 1 + n_classes) * 3
@@ -511,7 +499,7 @@ class Yolov4(nn.Module):
         # backbone
         in_filters = [32, 96, 1280]
         self.conv1           = make_three_conv([512, 1024], in_filters[2])
-        self.SPP             = SpatialPyramidPooling()
+        self.SPP             = Spp()
         self.conv2           = make_three_conv([512, 1024], 2048)
         self.upsample1       = Upsamplep(512, 256)
         self.conv_for_P4     = conv2d(in_filters[1], 256,1)
@@ -525,25 +513,26 @@ class Yolov4(nn.Module):
         self.down_sample2    = conv_dw(256, 512, stride = 2)
         self.make_five_conv4 = make_five_conv([512, 1024], 1024)
         
-        # neck
-        self.neck = Neck(inference)
-        # yolov4conv137
-        if yolov4conv137weight:
-            _model = nn.Sequential(self.down1, self.down2, self.down3, self.down4, self.down5, self.neck)
-            pretrained_dict = torch.load(yolov4conv137weight)
+        # # neck
+        # self.neck = Neck(inference)
+        # # yolov4conv137
+        # if yolov4conv137weight:
+        #     _model = nn.Sequential(self.down1, self.down2, self.down3, self.down4, self.down5, self.neck)
+        #     pretrained_dict = torch.load(yolov4conv137weight)
 
-            model_dict = _model.state_dict()
-            # 1. filter out unnecessary keys
-            pretrained_dict = {k1: v for (k, v), k1 in zip(pretrained_dict.items(), model_dict)}
-            # 2. overwrite entries in the existing state dict
-            model_dict.update(pretrained_dict)
-            _model.load_state_dict(model_dict)
+        #     model_dict = _model.state_dict()
+        #     # 1. filter out unnecessary keys
+        #     pretrained_dict = {k1: v for (k, v), k1 in zip(pretrained_dict.items(), model_dict)}
+        #     # 2. overwrite entries in the existing state dict
+        #     model_dict.update(pretrained_dict)
+        #     _model.load_state_dict(model_dict)
         
         # head
         self.head = Yolov4Head(output_ch, n_classes, inference)
 
 
     def forward(self, input):
+        output=[]
         x2, x1, x0 = self.model(input)
         P5 = self.conv1(x0)
         P5 = self.SPP(P5)
@@ -562,7 +551,14 @@ class Yolov4(nn.Module):
         P4_downsample = self.down_sample2(P4)
         P5 = torch.cat([P4_downsample,P5],axis=1)
         P5 = self.make_five_conv4(P5)
-        output = self.head(P3, P4, P5)
+
+        f3, f4, f5 = self.head(P3, P4, P5)
+        output.append(f3)
+        output.append(f4)
+        output.append(f5)
+        output.append(P5)
+        output.append(P4)
+        output.append(P3)
         return output
 
 
@@ -598,13 +594,15 @@ if __name__ == "__main__":
         model.cuda()
 
     img = cv2.imread(imgfile)
+
     sized = cv2.resize(img, (width, height))
     sized = cv2.cvtColor(sized, cv2.COLOR_BGR2RGB)
 
     from tool.utils import load_class_names, plot_boxes_cv2
     from tool.torch_utils import do_detect
 
-    for i in range(2):  
+    for i in range(2):  # This 'for' loop is for speed check
+                        # Because the first iteration is usually longer
         boxes = do_detect(model, sized, 0.4, 0.6, use_cuda)
 
     if namesfile == None:

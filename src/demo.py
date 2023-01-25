@@ -23,7 +23,7 @@ import argparse
 """hyper parameters"""
 use_cuda = False
 
-def detect_cv2(cfgfile, weightfile, imgfile):
+def detection(cfgfile, weightfile, imgfile):
     import cv2
     m = Darknet(cfgfile)
 
@@ -54,7 +54,46 @@ def detect_cv2(cfgfile, weightfile, imgfile):
         if i == 1:
             print('%s: Predicted in %f seconds.' % (imgfile, (finish - start)))
 
-    plot_boxes_cv2(img, boxes[0], savename='predictions.jpg', class_names=class_names)
+    print('Get boxes===============', boxes[0])
+    return boxes[0]
+
+def detect_cv2(cfgfile, weightfile, imgfile, out=False):
+    import cv2
+    m = Darknet(cfgfile)
+
+    m.print_network()
+    m.load_weights(weightfile)
+    print('Loading weights from %s... Done!' % (weightfile))
+
+    if use_cuda:
+        m.cuda()
+
+    num_classes = m.num_classes
+    if num_classes == 20:
+        namesfile = 'data/voc.names'
+    elif num_classes == 80:
+        namesfile = 'data/coco.names'
+    else:
+        namesfile = 'data/x.names'
+    class_names = load_class_names(namesfile)
+
+    img = cv2.imread(imgfile)
+    sized = cv2.resize(img, (m.width, m.height))
+    sized = cv2.cvtColor(sized, cv2.COLOR_BGR2RGB)
+
+    for i in range(2):
+        start = time.time()
+        boxes = do_detect(m, sized, 0.4, 0.6, use_cuda)
+        finish = time.time()
+        if i == 1:
+            print('%s: Predicted in %f seconds.' % (imgfile, (finish - start)))
+
+    if out == True:
+        return boxes[0]
+    else:
+        print('boxes[0]==============================', boxes[0])
+        plot_boxes_cv2(img, boxes[0], savename='predictions.jpg', class_names=class_names)
+
 
 
 def detect_cv2_camera(cfgfile, weightfile):
@@ -144,7 +183,7 @@ def get_args():
                         help='path of cfg file', dest='cfgfile')
     parser.add_argument('-weightfile', type=str,
                         
-                        default='Yolov4_epoch25.pth',
+                        default=r'/content/gdrive/MyDrive/Uni/MA/pytorch-YOLOv4/checkpoints/Yolov4_epoch174.pth',
                         help='path of trained model.', dest='weightfile')
     parser.add_argument('-imgfile', type=str,
                         default='./data/000000289343.jpg',

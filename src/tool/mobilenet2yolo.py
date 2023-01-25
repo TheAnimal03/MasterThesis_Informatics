@@ -3,10 +3,6 @@ from collections import OrderedDict
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-
-# from .densenet import _Transition, densenet121, densenet169, densenet201
-# from .ghostnet import ghostnet
-# from .mobilenet_v1 import mobilenet_v1
 from .mnv2 import mobilenet_v2
 
 class MobileNetV2(nn.Module):
@@ -110,7 +106,7 @@ def yolo_head(filters_list, in_filters):
 #   yolo_body
 #---------------------------------------------------#
 class YoloBody(nn.Module):
-    def __init__(self, anchors_mask, num_classes, wpath=None, backbone="mobilenet", pretrained=False):
+    def __init__(self, anchors_mask, num_classes, wpath=None, backbone="mobilenet",  pretrained=False):
         super(YoloBody, self).__init__()
         #---------------------------------------------------#   
         #   Generate mobilnet's backbone model and obtain three effective feature layers.
@@ -120,7 +116,7 @@ class YoloBody(nn.Module):
             #   52,52,32；26,26,92；13,13,320
             #---------------------------------------------------#
             self.backbone   = mobilenet_v2(weight_path = wpath, resume=pretrained)
-            in_filters      = [32, 96, 320]
+            in_filters      = [32, 96, 1280]#320
 
         self.conv1           = make_three_conv([512, 1024], in_filters[2])
         self.SPP             = SpatialPyramidPooling()
@@ -136,7 +132,7 @@ class YoloBody(nn.Module):
 
         # 3*(5+num_classes) = 3*(5+20) = 3*(4+1+20)=75
         self.yolo_head3      = yolo_head([256, len(anchors_mask[0]) * (5 + num_classes)], 128)
-
+        #print('Class number ==================', len(anchors_mask[0]) * (5 + num_classes))
         self.down_sample1    = conv_dw(128, 256, stride = 2)
         self.make_five_conv3 = make_five_conv([256, 512], 512)
 
@@ -152,7 +148,7 @@ class YoloBody(nn.Module):
     def forward(self, x):
         #  backbone
         x2, x1, x0 = self.backbone(x)
-        print(f'BB X1------------------{x0.shape}')
+       # print(f'BB X1------------------{x0.shape}')
 
         # 13,13,1024 -> 13,13,512 -> 13,13,1024 -> 13,13,512 -> 13,13,2048 
         P5 = self.conv1(x0)
@@ -203,6 +199,10 @@ class YoloBody(nn.Module):
         # 13,13,1024 -> 13,13,512 -> 13,13,1024 -> 13,13,512 -> 13,13,1024 -> 13,13,512
         P5 = self.make_five_conv4(P5)
 
+       # print('shape P3========:', P3.shape)
+        #print('shape P4========:', P4.shape)
+        #print('shape P5========:', P5.shape)
+
         #---------------------------------------------------#
         #   Third feature layer
         #   y3=(batch_size,75,52,52)
@@ -218,6 +218,9 @@ class YoloBody(nn.Module):
         #   y1=(batch_size,75,13,13)
         #---------------------------------------------------#
         out0 = self.yolo_head1(P5)
-        print(f'--{out0}---{out1}---{out2}')
-        return out0, out1, out2
+        #print(f'--{out0}---{out1}---{out2}')
+        # print('shape out0========:', out0.shape)
+        # print('shape out1========:', out1.shape)
+        # print('shape out2========:', out2.shape)
+        return out2, out1, out0
 

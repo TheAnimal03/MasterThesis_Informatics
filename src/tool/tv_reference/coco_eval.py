@@ -31,19 +31,24 @@ class CocoEvaluator(object):
 
         self.img_ids = []
         self.eval_imgs = {k: [] for k in iou_types}
+        #print('f==============================',self.eval_imgs)
 
     def update(self, predictions):
         img_ids = list(np.unique(list(predictions.keys())))
         self.img_ids.extend(img_ids)
 
         for iou_type in self.iou_types:
-            results = self.prepare(predictions, iou_type)
-            coco_dt = loadRes(self.coco_gt, results) if results else COCO()
-            coco_eval = self.coco_eval[iou_type]
 
+            results = self.prepare(predictions, iou_type)
+
+            coco_dt = loadRes(self.coco_gt, results) if results else COCO()
+
+            coco_eval = self.coco_eval[iou_type]
+            #print('eval output ===============',coco_eval)
             coco_eval.cocoDt = coco_dt
             coco_eval.params.imgIds = list(img_ids)
             img_ids, eval_imgs = evaluate(coco_eval)
+
 
             self.eval_imgs[iou_type].append(eval_imgs)
 
@@ -62,6 +67,7 @@ class CocoEvaluator(object):
             coco_eval.summarize()
 
     def prepare(self, predictions, iou_type):
+        #print('=================', iou_type)
         if iou_type == "bbox":
             return self.prepare_for_coco_detection(predictions)
         elif iou_type == "segm":
@@ -84,7 +90,6 @@ class CocoEvaluator(object):
                 boxes = convert_to_xywh(boxes, fmt=self.bbox_fmt).tolist()
             scores = prediction["scores"].tolist()
             labels = prediction["labels"].tolist()
-
             coco_results.extend(
                 [
                     {
@@ -139,8 +144,7 @@ class CocoEvaluator(object):
             if len(prediction) == 0:
                 continue
 
-            # boxes = prediction["boxes"]
-            # boxes = convert_to_xywh(boxes).tolist()
+
             scores = prediction["scores"].tolist()
             labels = prediction["labels"].tolist()
             keypoints = prediction["keypoints"]

@@ -1,15 +1,3 @@
-# -*- coding: utf-8 -*-
-"""
-@Time          : 2020/05/06 15:07
-@Author        : Tianxiaomo
-@File          : train.py
-@Noice         :
-@Modificattion :
-    @Author    :
-    @Time      :
-    @Detail    :
-
-"""
 import time
 import logging
 import os, sys, math
@@ -31,12 +19,13 @@ from os import path
 
 from dataset import Yolo_dataset
 from cfg import Cfg
-from models import Yolov4
+from modelsv2 import Yolov4
 from tool.darknet2pytorch import Darknet
 
 from tool.tv_reference.utils import collate_fn as val_collate
 from tool.tv_reference.coco_utils import convert_to_coco_api
 from tool.tv_reference.coco_eval import CocoEvaluator
+from tool.distillation import DistillerIKD
 
 
 def bboxes_iou(bboxes_a, bboxes_b, xyxy=True, GIoU=False, DIoU=False, CIoU=False):
@@ -104,16 +93,17 @@ def bboxes_iou(bboxes_a, bboxes_b, xyxy=True, GIoU=False, DIoU=False, CIoU=False
     iou = area_i / area_u
 
     if GIoU or DIoU or CIoU:
-        if GIoU: 
+        if GIoU:  # Generalized IoU https://arxiv.org/pdf/1902.09630.pdf
             area_c = torch.prod(con_br - con_tl, 2)  # convex area
             return iou - (area_c - area_u) / area_c  # GIoU
-        if DIoU or CIoU:
+        if DIoU or CIoU:  # Distance or Complete IoU https://arxiv.org/abs/1911.08287v1
+            # convex diagonal squared
             c2 = torch.pow(con_br - con_tl, 2).sum(dim=2) + 1e-16
             if DIoU:
                 return iou - rho2 / c2  # DIoU
             elif (
                 CIoU
-            ): 
+            ):  # https://github.com/Zzh-tju/DIoU-SSD-pytorch/blob/master/utils/box/box_utils.py#L47
                 v = (4 / math.pi**2) * torch.pow(
                     torch.atan(w1 / h1).unsqueeze(1) - torch.atan(w2 / h2), 2
                 )
@@ -352,6 +342,7 @@ class Yolo_loss(nn.Module):
             loss_l2 += F.mse_loss(input=output, target=target, reduction="sum")
 
         loss = loss_xy + loss_wh + loss_obj + loss_cls
+        print('Loss ==========', loss)
 
         return loss, loss_xy, loss_wh, loss_obj, loss_cls, loss_l2
 
@@ -370,15 +361,19 @@ def collate(batch):
     return images, bboxes
 
 
-def train(
+def train(teacher, 
     model,
+    teacherweightfile,
     device,
     config,
+    temperature = 0.2,
+    alpha=0.1, 
     epochs=5,
     batch_size=1,
     save_cp=True,
     log_step=20,
     img_scale=0.5,
+    l = 2
 ):
     train_dataset = Yolo_dataset(config.train_label, config, train=True)
     val_dataset = Yolo_dataset(config.val_label, config, train=False)
@@ -430,6 +425,31 @@ def train(
         Pretrained:
     """
     )
+    # Get teacher model
+    def get_teacher(weightfile):
+        if config.TRAIN_OPTIMIZER.lower() == 'adam':
+            optimizer = optim.Adam(
+                teacher.parameters(),
+                lr=config.learning_rate / config.batch,
+                betas=(0.9, 0.999),
+                eps=1e-08,
+        )
+        elif config.TRAIN_OPTIMIZER.lower() == 'sgd':
+            optimizer = optim.SGD(
+                params=model.parameters(),
+                lr=config.learning_rate / config.batch,
+                momentum=config.momentum,
+                weight_decay=config.decay,
+            )
+        if path.exists(weightfile):
+            checkpoint = torch.load(weightfile, device)
+            teacher.load_state_dict(checkpoint['model_state_dict'], strict=False)
+            optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+            epoch = checkpoint['epoch']
+            loss = checkpoint['loss']
+        else:
+            print('==================== No teacher model found ======================')
+        return teacher
 
     # learning rate setup
     def burnin_schedule(i):
@@ -484,7 +504,7 @@ def train(
         epoch = 0
 
     model.train()
-
+    teacher = get_teacher(teacherweightfile)
     for epoch in range(epoch, epochs):
         epoch_loss = 0
         epoch_step = 0
@@ -500,12 +520,26 @@ def train(
 
                 images = images.to(device=device, dtype=torch.float32)
                 bboxes = bboxes.to(device=device)
-
+                teacher_predictions = teacher(images)
                 bboxes_pred = model(images)
+                distillation_loss = 0 
+
                 loss, loss_xy, loss_wh, loss_obj, loss_cls, loss_l2 = criterion(
                     bboxes_pred, bboxes
                 )
-                
+
+                #---------------------------------------------------#
+                #   Response based distillation
+                #---------------------------------------------------#
+                for j in range(len(bboxes_pred)):  
+                    print(bboxes_pred[j].shape, teacher_predictions[j].shape)
+                    d = DistillerIKD(bboxes_pred[j], teacher_predictions[j] , temperature, l)
+                    distillation_loss += d.rskd_loss('s','t')
+
+                studentloss = loss
+                loss = alpha*loss + (1-alpha)*(distillation_loss)
+                print(f' Response based distiallation Loss: {distillation_loss} ======= Student Loss: {studentloss}====== General Loss {loss}')
+
                 loss.backward()
 
                 epoch_loss += loss.item()
@@ -552,13 +586,14 @@ def train(
 
                 pbar.update(images.shape[0])
 
-            if cfg.use_darknet_cfg:
-                print('======== Backbone: Darknet ==========')
-                eval_model = Darknet(cfg.cfgfile, inference=True)
-            else:
-                eval_model = Yolov4(
-                    cfg.pretrained, n_classes=cfg.classes, inference=True
-                )
+
+            model_url = ("/content/gdrive/MyDrive/Uni/MA/pytorch-YOLOv4/cfg/mobilenetv2-c5e733a8.pth")
+            eval_model = Yolov4(
+                        wpath=model_url,
+                        n_classes=cfg.classes,
+                        inference=True
+                            )
+
             if torch.cuda.device_count() > 1:
                 eval_model.load_state_dict(model.module.state_dict())
                 eval_model.load_state_dict(model.module.state_dict())
@@ -585,7 +620,7 @@ def train(
             from datetime import datetime
 
             savetime = datetime.now()
-            print('======= LOSS ======', loss)
+
             statstitle = [
                 "Date",
                 "Results of epoch: ",
@@ -601,7 +636,6 @@ def train(
                 "AR_small: ",
                 "AR_medium: ",
                 "AR_large: ",
-                "Loss"
             ]
             statsval = [
                 savetime,
@@ -618,7 +652,6 @@ def train(
                 stats[9],
                 stats[10],
                 stats[11],
-                loss
             ]
 
             with open("trainresult.txt", "a") as f:
@@ -688,7 +721,6 @@ def evaluate(model, data_loader, cfg, device, logger=None, **kwargs):
             torch.cuda.synchronize()
         model_time = time.time()
         outputs = model(model_input)
-        #print('====================eval==', outputs.shape)
         model_time = time.time() - model_time
 
         res = {}
@@ -707,6 +739,8 @@ def evaluate(model, data_loader, cfg, device, logger=None, **kwargs):
             boxes[..., 2] = boxes[..., 2] * img_width
             boxes[..., 3] = boxes[..., 3] * img_height
             boxes = torch.as_tensor(boxes, dtype=torch.float32)
+            # confs = output[...,4:].copy()
+            #print("Get Schapes===============", boxes.shape)
 
             confs = confs.cpu().detach().numpy()
             labels = np.argmax(confs, axis=1).flatten()
@@ -807,7 +841,6 @@ def init_logger(
     log_file=None, log_dir=None, log_level=logging.INFO, mode="w", stdout=True
 ):
 
-
     def get_date_str():
         now = datetime.datetime.now()
         return now.strftime("%Y-%m-%d_%H-%M-%S")
@@ -845,22 +878,33 @@ if __name__ == "__main__":
     logging = init_logger(log_dir="log")
     cfg = get_args(**Cfg)
     os.environ["CUDA_VISIBLE_DEVICES"] = cfg.gpu
+    #print("Test: ", torch.cuda.is_available())
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    #print("device: ", device)
     logging.info(f"Using device {device}")
+    teacher = Darknet(cfg.cfgfile)
 
-    if cfg.use_darknet_cfg:
-        print('======== Backbone Model: Darknet ==========')
-        model = Darknet(cfg.cfgfile)
-    else:
-        print('========Backbone Model: YOLOv4-Model=========')
-        model = Yolov4(cfg.pretrained, n_classes=cfg.classes)
 
+    model_url = (
+        "/content/gdrive/MyDrive/Uni/MA/pytorch-YOLOv4/cfg/mobilenetv2-c5e733a8.pth"
+    )
+    model = Yolov4(
+                wpath=model_url,
+                n_classes=cfg.classes
+                #inference=True
+            )
+    print("used model = Mobilenet")
     if torch.cuda.device_count() > 1:
         model = torch.nn.DataParallel(model)
     model.to(device=device)
+    teacher.to(device=device)
 
     try:
         train(
+            teacher = teacher,
+            teacherweightfile = cfg.teacherweightfile,
+            temperature = cfg.temperature,
+            alpha = cfg.alpha,
             model=model,
             config=cfg,
             epochs=cfg.TRAIN_EPOCHS,
@@ -876,3 +920,4 @@ if __name__ == "__main__":
             sys.exit(0)
         except SystemExit:
             os._exit(0)
+

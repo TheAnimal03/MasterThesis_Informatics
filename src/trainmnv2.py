@@ -137,7 +137,7 @@ class Yolo_loss(nn.Module):
     def __init__(self, n_classes=80, n_anchors=3, device=None, batch=2):
         super(Yolo_loss, self).__init__()
         self.device = device
-        self.strides =  [32, 16, 8]
+        self.strides =  [8, 16, 32]
         image_size = 608
         self.n_classes = n_classes
         self.n_anchors = n_anchors
@@ -249,22 +249,19 @@ class Yolo_loss(nn.Module):
             #print('Anchor: ', output.size())
 
             
-            print('Old output============: ', output.size())
+            print('Anchor-----------------: ', output.size())
             output = output.view(batchsize, self.n_anchors, n_ch, fsize, fsize)
             print('Anchor-----------: ', output.size())
             output = output.permute(0, 1, 3, 4, 2)  # .contiguous()
-            print('new output==============', output.size())
+            
 
             # logistic activation for xy, obj, cls
             output[..., np.r_[:2, 4:n_ch]] = torch.sigmoid(output[..., np.r_[:2, 4:n_ch]])
 
             pred = output[..., :4].clone()
-            print('Anchor-----------: ', pred[..., 0].shape)
-            print('========== ', self.grid_x[output_id].shape)
             pred[..., 0] += self.grid_x[output_id]
             pred[..., 1] += self.grid_y[output_id]
             pred[..., 2] = torch.exp(pred[..., 2]) * self.anchor_w[output_id]
-            
             pred[..., 3] = torch.exp(pred[..., 3]) * self.anchor_h[output_id]
 
             obj_mask, tgt_mask, tgt_scale, target = self.build_target(pred, labels, batchsize, fsize, n_ch, output_id)
@@ -485,7 +482,7 @@ def train(model, device, config, anchors_mask, num_classes, epochs=5, batch_size
               pretrained = False
               print('This is a test', model_url)
               #eval_model = MobileNetV2(model_url)
-              eval_model = YoloBody(anchors_mask, num_classes, wpath= model_url, backbone = 'mobilenet', pretrained = pretrained)
+              eval_model = YoloBody(anchors_mask, num_classes, wpath= model_url, backbone = backbone, Resume = pretrained)
               # print('This is a test', eval_model)
             else:
                 
@@ -621,8 +618,6 @@ def evaluate(model, data_loader, cfg, device, logger=None, **kwargs):
                 "labels": labels,
             }
         evaluator_time = time.time()
-        print('=============', res)
-        print('Eval=================',type(coco_evaluator))
         coco_evaluator.update(res)
         evaluator_time = time.time() - evaluator_time
 

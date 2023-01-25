@@ -23,14 +23,6 @@ class MaxPoolDark(nn.Module):
         self.stride = stride
 
     def forward(self, x):
-        """
-        darknet output_size = (input_size + p - k) / s +1
-        p : padding = k - 1
-        k : size
-        s : stride
-        torch output_size = (input_size + 2*p -k) / s +1
-        p : padding = k//2
-        """
         p = self.size // 2
         if ((x.shape[2] - 1) // self.stride) != (
             (x.shape[2] + 2 * p - self.size) // self.stride
@@ -167,10 +159,8 @@ class Darknet(nn.Module):
         outputs = dict()
         out_boxes = []
         fm = []
-        for block in self.blocks:
+        for k, block in enumerate(self.blocks):
             ind = ind + 1
-            # if ind > 0:
-            #    return x
 
             if block["type"] == "net":
                 continue
@@ -185,6 +175,7 @@ class Darknet(nn.Module):
             ]:
                 x = self.models[ind](x)
                 outputs[ind] = x
+
             elif block["type"] == "route":
                 layers = block["layers"].split(",")
                 layers = [int(i) if int(i) > 0 else int(i) + ind for i in layers]
@@ -192,6 +183,12 @@ class Darknet(nn.Module):
                     if "groups" not in block.keys() or int(block["groups"]) == 1:
                         x = outputs[layers[0]]
                         outputs[ind] = x
+
+                        if x.shape == torch.Size([4, 512, 19, 19]) and k == 112:
+                            fm.append(x)
+                        elif x.shape == torch.Size([4, 256, 38, 38]) and k == 152:
+                            fm.append(x)
+
                     else:
                         groups = int(block["groups"])
                         group_id = int(block["group_id"])
@@ -210,14 +207,10 @@ class Darknet(nn.Module):
                     x2 = outputs[layers[1]]
                     x3 = outputs[layers[2]]
                     x4 = outputs[layers[3]]
-                    # print('=====================', x4.shape)
-                    fm.append(x2)
-                    fm.append(x3)
-                    fm.append(x4)
                     x = torch.cat((x1, x2, x3, x4), 1)
                     outputs[ind] = x
                 else:
-                    print("rounte number > 2 ,is {}".format(len(layers)))
+                    print("route number > 2 ,is {}".format(len(layers)))
 
             elif block["type"] == "shortcut":
                 from_layer = int(block["from"])
@@ -254,13 +247,11 @@ class Darknet(nn.Module):
                 print("unknown type %s" % (block["type"]))
 
         if self.training:
-            #for i in outputs:
-                #print('=============', i.shape)
+            for i in fm:
+                out_boxes.append(i)
             return out_boxes
         else:
-            #sfor i in outputs:
-                #print('=============i', type(i))
-            return get_region_boxes(out_boxes)
+            return get_region_boxes(out_boxes[0:4])
 
     def print_network(self):
         print_cfg(self.blocks)
@@ -295,7 +286,6 @@ class Darknet(nn.Module):
                         ),
                     )
                     model.add_module("bn{0}".format(conv_id), nn.BatchNorm2d(filters))
-                    # model.add_module('bn{0}'.format(conv_id), BN2d(filters))
                 else:
                     model.add_module(
                         "conv{0}".format(conv_id),
@@ -325,14 +315,10 @@ class Darknet(nn.Module):
                 pool_size = int(block["size"])
                 stride = int(block["stride"])
                 if stride == 1 and pool_size % 2:
-                    # You can use Maxpooldark instead, here is convenient to convert onnx.
-                    # Example: [maxpool] size=3 stride=1
                     model = nn.MaxPool2d(
                         kernel_size=pool_size, stride=stride, padding=pool_size // 2
                     )
                 elif stride == pool_size:
-                    # You can use Maxpooldark instead, here is convenient to convert onnx.
-                    # Example: [maxpool] size=2 stride=2
                     model = nn.MaxPool2d(
                         kernel_size=pool_size, stride=stride, padding=0
                     )

@@ -1,15 +1,3 @@
-# -*- coding: utf-8 -*-
-"""
-@Time          : 2020/05/06 15:07
-@Author        : Tianxiaomo
-@File          : train.py
-@Noice         :
-@Modificattion :
-    @Author    :
-    @Time      :
-    @Detail    :
-
-"""
 import time
 import logging
 import os, sys, math
@@ -31,12 +19,14 @@ from os import path
 
 from dataset import Yolo_dataset
 from cfg import Cfg
-from models import Yolov4
-from tool.darknet2pytorch import Darknet
+from modelsv2_hint import Yolov4 as Yolov4_hint
+from modelsv2 import Yolov4
+from tool.darknet2yolo_hint import Darknet
 
 from tool.tv_reference.utils import collate_fn as val_collate
 from tool.tv_reference.coco_utils import convert_to_coco_api
 from tool.tv_reference.coco_eval import CocoEvaluator
+from tool.distillation import DistillerRKD, DistillerIKD
 
 
 def bboxes_iou(bboxes_a, bboxes_b, xyxy=True, GIoU=False, DIoU=False, CIoU=False):
@@ -104,16 +94,17 @@ def bboxes_iou(bboxes_a, bboxes_b, xyxy=True, GIoU=False, DIoU=False, CIoU=False
     iou = area_i / area_u
 
     if GIoU or DIoU or CIoU:
-        if GIoU: 
+        if GIoU:  # Generalized IoU https://arxiv.org/pdf/1902.09630.pdf
             area_c = torch.prod(con_br - con_tl, 2)  # convex area
             return iou - (area_c - area_u) / area_c  # GIoU
-        if DIoU or CIoU:
+        if DIoU or CIoU:  # Distance or Complete IoU https://arxiv.org/abs/1911.08287v1
+            # convex diagonal squared
             c2 = torch.pow(con_br - con_tl, 2).sum(dim=2) + 1e-16
             if DIoU:
                 return iou - rho2 / c2  # DIoU
             elif (
                 CIoU
-            ): 
+            ):  # https://github.com/Zzh-tju/DIoU-SSD-pytorch/blob/master/utils/box/box_utils.py#L47
                 v = (4 / math.pi**2) * torch.pow(
                     torch.atan(w1 / h1).unsqueeze(1) - torch.atan(w2 / h2), 2
                 )
@@ -352,6 +343,7 @@ class Yolo_loss(nn.Module):
             loss_l2 += F.mse_loss(input=output, target=target, reduction="sum")
 
         loss = loss_xy + loss_wh + loss_obj + loss_cls
+        #print('Loss ==========', loss)
 
         return loss, loss_xy, loss_wh, loss_obj, loss_cls, loss_l2
 
@@ -370,16 +362,22 @@ def collate(batch):
     return images, bboxes
 
 
-def train(
-    model,
+def train(teacher, 
+    student,
+    teacherweightfile,
     device,
     config,
     epochs=5,
     batch_size=1,
     save_cp=True,
     log_step=20,
-    img_scale=0.5,
+    img_scale=0.5
 ):
+    distilltype = config.distilltype # 'fkd', 'rkd', 'rskd', 'mkd'
+    temperature = config.temperature
+    alpha=config.alpha
+    l = config.norm
+    model = student
     train_dataset = Yolo_dataset(config.train_label, config, train=True)
     val_dataset = Yolo_dataset(config.val_label, config, train=False)
 
@@ -430,6 +428,31 @@ def train(
         Pretrained:
     """
     )
+    # Get teacher model
+    def get_teacher(weightfile):
+        if config.TRAIN_OPTIMIZER.lower() == 'adam':
+            optimizer = optim.Adam(
+                teacher.parameters(),
+                lr=config.learning_rate / config.batch,
+                betas=(0.9, 0.999),
+                eps=1e-08,
+        )
+        elif config.TRAIN_OPTIMIZER.lower() == 'sgd':
+            optimizer = optim.SGD(
+                params=model.parameters(),
+                lr=config.learning_rate / config.batch,
+                momentum=config.momentum,
+                weight_decay=config.decay,
+            )
+        if path.exists(weightfile):
+            checkpoint = torch.load(weightfile, device)
+            teacher.load_state_dict(checkpoint['model_state_dict'], strict=False)
+            optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+            epoch = checkpoint['epoch']
+            loss = checkpoint['loss']
+        else:
+            print('==================== No teacher model found ======================')
+        return teacher
 
     # learning rate setup
     def burnin_schedule(i):
@@ -468,10 +491,7 @@ def train(
     save_prefix = "Yolov4_epoch"
     saved_models = deque()
 
-    checkpoint_path = (
-        "/content/gdrive/MyDrive/Uni/MA/pytorch-YOLOv4/checkpoints/Yolov4_epoch360.pth"
-    )
-
+    checkpoint_path = config.start_checkpoint_path
     if path.exists(checkpoint_path):
         print(checkpoint_path)
         checkpoint = torch.load(checkpoint_path)
@@ -484,10 +504,12 @@ def train(
         epoch = 0
 
     model.train()
-
+    teacher = get_teacher(teacherweightfile)
     for epoch in range(epoch, epochs):
         epoch_loss = 0
         epoch_step = 0
+        bboxes_pred = []
+        guidedlayer_fm = []
 
         with tqdm(
             total=n_train, desc=f"Epoch {epoch + 1}/{epochs}", unit="img", ncols=50
@@ -500,12 +522,112 @@ def train(
 
                 images = images.to(device=device, dtype=torch.float32)
                 bboxes = bboxes.to(device=device)
+                y = teacher(images)
+                x = model(images)
+                
 
-                bboxes_pred = model(images)
+                teacher_predictions = y[0:3]
+                hint_fm = y[3 : len(y)]
+                bboxes_pred = x[0:3]  # Hint feature maps
+                guidedlayer_fm = x[3 : len(x)]  # Guided feature maps
+                distillation_loss = 0 
+                hintlossrkd, hintlossfkd, hintloss = 0, 0, 0
+                
+
                 loss, loss_xy, loss_wh, loss_obj, loss_cls, loss_l2 = criterion(
                     bboxes_pred, bboxes
                 )
-                
+                #---------------------------------------------------#
+                #   response based distillation
+                #---------------------------------------------------#
+                if distilltype == 'rskd':
+                    for j in range(len(bboxes_pred)):  
+                        #print(bboxes_pred[j].shape, teacher_predictions[j].shape)
+                        d = DistillerIKD(bboxes_pred[j], teacher_predictions[j] , temperature, l) 
+                        # set distanceloss or/an angleloss in d to choose if relational mat 
+                        distillation_loss += d.rskd_loss('s','t')
+
+                    studentloss = loss
+                    loss = alpha*loss + (1-alpha)*(distillation_loss)
+                    print(f'Response based distiallation Loss: {distillation_loss} ======= Student Loss: {studentloss}====== General Loss {loss}')
+
+
+                #---------------------------------------------------#
+                #   feature based distillation
+                #---------------------------------------------------#
+                elif distilltype == 'fkd':
+                    # Logits Loss
+                    for j in range(len(bboxes_pred)):  
+                        #print(bboxes_pred[j].shape, teacher_predictions[j].shape)
+                        d = DistillerIKD(bboxes_pred[j], teacher_predictions[j] , temperature, l)
+                        distillation_loss += d.rskd_loss('s','t')
+
+                    # Hint Loss
+                    for j in range(len(hint_fm)):  
+                        #print(guidedlayer_fm[j].shape, hint_fm[j].shape)
+                        d = DistillerIKD(guidedlayer_fm[j], hint_fm[j] , temperature, l)
+                        hintloss += d.hint_loss('s','t')
+
+                    # Student Loss
+                    studentloss = loss
+
+                    loss = config.beta * studentloss + config.gamma * distillation_loss + config.sigma * hintloss
+                    print(
+                        f"Feature based distiallation: ========= Logits Loss: {distillation_loss} ======= Student Loss: {studentloss}====== Hint Loss L{l}: {hintloss} ===== Overall Loss: {loss}"
+                    )
+
+                #---------------------------------------------------#
+                #   relational distillation
+                #---------------------------------------------------#
+                elif distilltype == 'rkd':
+                    for j in range(len(bboxes_pred)):  
+                        #print(bboxes_pred[j].shape, teacher_predictions[j].shape)
+                        d = DistillerIKD(bboxes_pred[j], teacher_predictions[j] , temperature, l)
+                        distillation_loss += d.rskd_loss('s','t')
+                    #print('###y, ####x ', len(y), len(x))
+                    a = DistillerRKD(guidedfeaturemaps=guidedlayer_fm, 
+                    hintfeaturemaps=hint_fm, angleloss=1, distanceloss=1)
+                    hintloss = a.relationalloss()
+                    studentloss = loss
+                    loss = (
+                        config.beta * studentloss
+                        + config.gamma * distillation_loss
+                        + config.sigma * hintloss
+                    )
+                    print(
+                        f"Relation based distiallation Loss: == Logits Loss: {distillation_loss} ======= Student Loss: {studentloss}====== Hint Loss L{l}: {hintloss} ===== Overall Loss: {loss}"
+                    )
+
+                #---------------------------------------------------#
+                #   multitype distillation
+                #---------------------------------------------------#
+                elif distilltype == 'mkd':
+                    for j in range(len(bboxes_pred)):  
+                        #print(bboxes_pred[j].shape, teacher_predictions[j].shape)
+                        d = DistillerIKD(bboxes_pred[j], teacher_predictions[j] , temperature, l)
+                        distillation_loss += d.rskd_loss('s','t')
+
+                    a = DistillerRKD(guidedfeaturemaps=guidedlayer_fm, 
+                    hintfeaturemaps=hint_fm, angleloss=1, distanceloss=1)
+                    hintlossrkd = a.relationalloss()
+                    
+                    # Hint Loss
+                    for j in range(len(hint_fm)):  
+                        print(guidedlayer_fm[j].shape, hint_fm[j].shape)
+                        d = DistillerIKD(guidedlayer_fm[j], hint_fm[j] , temperature, l)
+                        hintlossfkd += d.hint_loss('s','t')
+                    
+                    studentloss = loss
+                    loss = (
+                        config.beta * studentloss
+                        + config.gamma * distillation_loss
+                        + config.sigma1 * hintlossrkd
+                        + config.sigma2 * hintlossfkd
+                    )
+                    print(
+                        f"multitype distiallation Loss: == Logits Loss: {distillation_loss} ======= Student Loss: {studentloss}====== Hint Loss L{l}: {hintloss} ===== Overall Loss: {loss}"
+                    )
+
                 loss.backward()
 
                 epoch_loss += loss.item()
@@ -552,13 +674,12 @@ def train(
 
                 pbar.update(images.shape[0])
 
-            if cfg.use_darknet_cfg:
-                print('======== Backbone: Darknet ==========')
-                eval_model = Darknet(cfg.cfgfile, inference=True)
-            else:
-                eval_model = Yolov4(
-                    cfg.pretrained, n_classes=cfg.classes, inference=True
-                )
+            eval_model = Yolov4(
+                        wpath=config.mnv2_pretrained,
+                        n_classes=cfg.classes,
+                        inference=True
+                            )
+
             if torch.cuda.device_count() > 1:
                 eval_model.load_state_dict(model.module.state_dict())
                 eval_model.load_state_dict(model.module.state_dict())
@@ -585,10 +706,10 @@ def train(
             from datetime import datetime
 
             savetime = datetime.now()
-            print('======= LOSS ======', loss)
+
             statstitle = [
-                "Date",
-                "Results of epoch: ",
+                "=========== Results of epoch: ",
+                "============ Date",
                 "AP: ",
                 "AP50: ",
                 "AP75: ",
@@ -601,11 +722,10 @@ def train(
                 "AR_small: ",
                 "AR_medium: ",
                 "AR_large: ",
-                "Loss"
             ]
             statsval = [
-                savetime,
                 epoch,
+                savetime,
                 stats[0],
                 stats[1],
                 stats[2],
@@ -618,10 +738,20 @@ def train(
                 stats[9],
                 stats[10],
                 stats[11],
-                loss
             ]
 
-            with open("trainresult.txt", "a") as f:
+
+            if distilltype == 'mkd':
+                cachefile = "trainresultmkd.txt"
+            elif distilltype == 'rkd':
+                cachefile = "trainresultrkd.txt"
+            elif distilltype == 'rskd':
+                cachefile = "trainresultrskd.txt"
+            elif distilltype == 'fkd':
+                cachefile = "trainresultmkd.txt"
+            else:
+                cachefile = "trainresult.txt"               
+            with open(cachefile, "a") as f:
                 for i in range(12):
                     f.write("\n")
                     f.write(statstitle[i] + str(statsval[i]))
@@ -688,7 +818,6 @@ def evaluate(model, data_loader, cfg, device, logger=None, **kwargs):
             torch.cuda.synchronize()
         model_time = time.time()
         outputs = model(model_input)
-        #print('====================eval==', outputs.shape)
         model_time = time.time() - model_time
 
         res = {}
@@ -701,13 +830,11 @@ def evaluate(model, data_loader, cfg, device, logger=None, **kwargs):
                 boxes[..., 2:] - boxes[..., :2]
             )  # Transform [x1, y1, x2, y2] to [x1, y1, w, h]
             x = boxes[..., 2:]
-            #print("boxes=====", x.shape)
             boxes[..., 0] = boxes[..., 0] * img_width
             boxes[..., 1] = boxes[..., 1] * img_height
             boxes[..., 2] = boxes[..., 2] * img_width
             boxes[..., 3] = boxes[..., 3] * img_height
             boxes = torch.as_tensor(boxes, dtype=torch.float32)
-
             confs = confs.cpu().detach().numpy()
             labels = np.argmax(confs, axis=1).flatten()
             labels = torch.as_tensor(labels, dtype=torch.int64)
@@ -747,6 +874,13 @@ def get_args(**kwargs):
         default=0.001,
         help="Learning rate",
         dest="learning_rate",
+    )
+    parser.add_argument(
+        "-distilltype",
+        type=str,
+        default="rkd",
+        help="knowledge distillation type (rkd, mkd, rskd, fkd)",
+        dest="distilltype",
     )
     parser.add_argument(
         "-f",
@@ -807,7 +941,6 @@ def init_logger(
     log_file=None, log_dir=None, log_level=logging.INFO, mode="w", stdout=True
 ):
 
-
     def get_date_str():
         now = datetime.datetime.now()
         return now.strftime("%Y-%m-%d_%H-%M-%S")
@@ -847,32 +980,61 @@ if __name__ == "__main__":
     os.environ["CUDA_VISIBLE_DEVICES"] = cfg.gpu
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     logging.info(f"Using device {device}")
+    teacher = Darknet(cfg.cfgfile)
 
-    if cfg.use_darknet_cfg:
-        print('======== Backbone Model: Darknet ==========')
-        model = Darknet(cfg.cfgfile)
+    if cfg.distilltype=='mkd':
+        print("*********************************************************************")
+        print("********************    Distillation using multi-type KD ************")
+        print("******************** Teacher: Darknet, Student: MobilenetV2 *********")
+        print("*********************************************************************")        
+    elif cfg.distilltype=='fkd':
+        print("*********************************************************************")
+        print("********************  Distillation using feature based KD ***********")
+        print("******************** Teacher: Darknet, Student: MobilenetV2 *********")
+        print("*********************************************************************")      
+    elif cfg.distilltype=='rskd':
+        print("*********************************************************************")
+        print("********************  Distillation using response based KD **********")
+        print("******************** Teacher: Darknet, Student: MobilenetV2 *********")
+        print("*********************************************************************")      
+    elif cfg.distilltype=='rkd':
+        print("*********************************************************************")
+        print("********************  Distillation using relation based KD **********")
+        print("******************** Teacher: Darknet, Student: MobilenetV2 *********")      
+        print("*********************************************************************")      
     else:
-        print('========Backbone Model: YOLOv4-Model=========')
-        model = Yolov4(cfg.pretrained, n_classes=cfg.classes)
+        print("*********************************************************************")
+        print("********************      No Distillation      **********************")
+        print("******************** Train YOLO-V4 MobilenetV2 **********************")      
+        print("*********************************************************************")      
 
+    model_train = Yolov4_hint(
+                wpath=cfg.mnv2_pretrained,
+                n_classes=cfg.classes
+            )
+    
     if torch.cuda.device_count() > 1:
-        model = torch.nn.DataParallel(model)
-    model.to(device=device)
+        model_train = torch.nn.DataParallel(model_train)
+    model_train.to(device=device)
+    teacher.to(device=device)
 
     try:
         train(
-            model=model,
+            teacher = teacher,
+            teacherweightfile = cfg.teacherweightfile,
+            student=model_train,
             config=cfg,
             epochs=cfg.TRAIN_EPOCHS,
             device=device,
         )
     except KeyboardInterrupt:
-        if isinstance(model, torch.nn.DataParallel):
-            torch.save(model.module.state_dict(), "INTERRUPTED.pth")
+        if isinstance(model_train, torch.nn.DataParallel):
+            torch.save(model_train.module.state_dict(), "INTERRUPTED.pth")
         else:
-            torch.save(model.state_dict(), "INTERRUPTED.pth")
+            torch.save(model_train.state_dict(), "INTERRUPTED.pth")
         logging.info("Saved interrupt")
         try:
             sys.exit(0)
         except SystemExit:
             os._exit(0)
+
