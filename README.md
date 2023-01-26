@@ -1,4 +1,4 @@
-# Master Thesis: Knowlege Distillation
+# Compressing DNN for OD: Knowlege Distillation
 
 ![](https://img.shields.io/static/v1?label=python&message=3.6|3.7&color=blue)
 ![](https://img.shields.io/static/v1?label=pytorch&message=1.4&color=<COLOR>)
@@ -73,5 +73,5 @@ A PyTorch implementation of YOLOv4.
     ```
 - For training with MobileNetv2 
     ```
-     python trainmnv2.py -g [GPU_ID] -dir [Dataset direction] ...
+     python trainmnv2_.py -g [GPU_ID] -dir [Dataset direction] ...
     ```
