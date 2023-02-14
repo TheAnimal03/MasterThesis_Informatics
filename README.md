@@ -75,3 +75,7 @@ A PyTorch implementation of YOLOv4.
     ```
      python trainmnv2_.py -g [GPU_ID] -dir [Dataset direction] ...
     ```
+- To train distilled models 
+    ```
+     python trainrkd.py -distilltype ['RsKD', 'RKD', 'FKD' or 'MKD']-g [GPU_ID] -dir [Dataset direction] ...
+    ```
