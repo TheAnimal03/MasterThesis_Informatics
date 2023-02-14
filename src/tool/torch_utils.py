@@ -102,3 +102,29 @@ def do_detect(model, img, conf_thresh, nms_thresh, use_cuda=1):
         print('-----------------------------------')
 
         return utils.post_processing(img, conf_thresh, nms_thresh, output)
+    
+def do_simpledetect(model, img, conf_thresh, nms_thresh, use_cuda=1):
+    model.eval()
+    with torch.no_grad():
+        t0 = time.time()
+
+        if type(img) == np.ndarray and len(img.shape) == 3:  # cv2 image
+            img = torch.from_numpy(img.transpose(2, 0, 1)).float().div(255.0).unsqueeze(0)
+        elif type(img) == np.ndarray and len(img.shape) == 4:
+            img = torch.from_numpy(img.transpose(0, 3, 1, 2)).float().div(255.0)
+        else:
+            print("unknow image type")
+            exit(-1)
+
+        if use_cuda:
+            img = img.cuda()
+        img = torch.autograd.Variable(img)
+
+        t1 = time.time()
+
+        output = model(img)
+
+        t2 = time.time()
+        inference = (t2 - t1)
+
+        return inference, utils.post_processing(img, conf_thresh, nms_thresh, output)

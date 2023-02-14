@@ -164,9 +164,9 @@ class DistillerRKD:
       loss2=0
       for k in range(len(relan_s)):
         loss2 += torch.linalg.norm( torch.sub(relan_s[k], relan_t[k]) , ord=self.dim)
-      a = self.angleloss+self.angleloss
-      b = (self.angleloss+self.angleloss)**2
-      x = (self.distanceloss*loss1 + self.angleloss*loss2)*a/b
+      a = self.distanceloss+self.angleloss
+      b = (self.distanceloss+self.angleloss)**2
+      x = (self.distanceloss*loss1 + self.angleloss*loss2)*a/b # if both at same time, then evarage
       return x
 
 #---------------------------------------------------#

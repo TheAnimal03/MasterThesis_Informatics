@@ -563,6 +563,7 @@ def train(teacher,
                         distillation_loss += d.rskd_loss('s','t')
 
                     # Hint Loss
+                    print('len hint===============', len(hint_fm))
                     for j in range(len(hint_fm)):  
                         #print(guidedlayer_fm[j].shape, hint_fm[j].shape)
                         d = DistillerIKD(guidedlayer_fm[j], hint_fm[j] , temperature, l)
@@ -585,6 +586,7 @@ def train(teacher,
                         d = DistillerIKD(bboxes_pred[j], teacher_predictions[j] , temperature, l)
                         distillation_loss += d.rskd_loss('s','t')
                     #print('###y, ####x ', len(y), len(x))
+
                     a = DistillerRKD(guidedfeaturemaps=guidedlayer_fm, 
                     hintfeaturemaps=hint_fm, angleloss=1, distanceloss=1)
                     hintloss = a.relationalloss()
@@ -765,27 +767,27 @@ def train(teacher,
                 save_path = os.path.join(
                     config.checkpoints, f"{save_prefix}{epoch + 1}.pth"
                 )
-                if isinstance(model, torch.nn.DataParallel):
-                    torch.save(
-                        model.models,
-                        {
-                            "epoch": epoch + 1,
-                            "model_state_dict": model.state_dict(),
-                            "optimizer_state_dict": optimizer.state_dict(),
-                            "loss": loss,
-                        },
-                        save_path,
-                    )
-                else:
-                    torch.save(
-                        {
-                            "epoch": epoch + 1,
-                            "model_state_dict": model.state_dict(),
-                            "optimizer_state_dict": optimizer.state_dict(),
-                            "loss": loss,
-                        },
-                        save_path,
-                    )
+                #f isinstance(model, torch.nn.DataParallel):
+                torch.save(
+                    model,
+                    {
+                        "epoch": epoch + 1,
+                        "model_state_dict": model.state_dict(),
+                        "optimizer_state_dict": optimizer.state_dict(),
+                        "loss": loss,
+                    },
+                    save_path,
+                )
+                # else:
+                #     torch.save(
+                #         {
+                #             "epoch": epoch + 1,
+                #             "model_state_dict": model.state_dict(),
+                #             "optimizer_state_dict": optimizer.state_dict(),
+                #             "loss": loss,
+                #         },
+                #         save_path,
+                #     )
                 logging.info(f"Checkpoint {epoch + 1} saved !")
                 saved_models.append(save_path)
                 if len(saved_models) > config.keep_checkpoint_max > 0:
