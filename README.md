@@ -16,8 +16,7 @@ A PyTorch implementation of YOLOv4.
 # 0. Design Understanding
 ## Folders
 ```
-├── Literatur           collection for OD and KD 
-├── Vorbereitung        proposal for thesis
+├── doc        Master thesis
 ├── source (src)        main folder for the implemantation
 ```
 ## Code inside src
@@ -28,14 +27,16 @@ A PyTorch implementation of YOLOv4.
 ├── demo_darknet2onnx.py  tool to convert into onnx --> tool/darknet2pytorch
 ├── demo_pytorch2onnx.py  tool to convert into onnx
 ├── models.py             model for pytorch
-├── train.py              train models.py (Backbone Darknet)
-├── trainmnv2.py          train models.py (Backbone mobilenetv2)
+├── train.py              train baseline model (Backbone Darknet, YOLO-V4 Teacher)
+├── trainmnv2.py          train extended baseline model (Backbone mobilenetv2, YOLO-v4 Student)
+├── trainrkd.py           train distilled models (Backbone mobilenetv2)
 ├── cfg.py                cfg.py for train
-├── cfg                   cfg --> darknet2pytorch, mobilenetv2
+├── cfg                   cfg --> darknet2pytorch, mobilenetv2, distillation
 ├── data                  --> COCO 2017
 ├── weight                --> darknet2pytorch
 ├── tool
 │   ├── camera.py           a demo camera
+    ├── distillation.py     individual and relational distillers
 │   ├── coco_annotation.py  coco dataset generator for annotations 
 |                           (Use `git submodule update --init submodule-path` 
 |                           to clone folder yolov4-PyTorch)
