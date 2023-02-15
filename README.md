@@ -62,10 +62,9 @@ A PyTorch implementation of YOLOv4.
     ...
     ```
 # 2. Train
-## 2.1 Set train parameters and link for train annotations file.
+## 2.1 Set training parameters, links for the dataset annotations file, and checkpoint to upload.
     you can set parameters in:
     - cfg.py for training with Darknet.
-    - cfgmnv2.py for training with MobileNetv2.
     
 ## 2.2 Start training
 - For training with Darknet 
@@ -78,5 +77,5 @@ A PyTorch implementation of YOLOv4.
     ```
 - To train distilled models 
     ```
-     python trainrkd.py -distilltype ['RsKD', 'RKD', 'FKD' or 'MKD']-g [GPU_ID] -dir [Dataset direction] ...
+     python trainrkd.py -distilltype ['RsKD', 'RKD', 'FKD' or 'MKD'] -g [GPU_ID] -dir [Dataset direction] ...
     ```
