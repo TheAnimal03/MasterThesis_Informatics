@@ -38,8 +38,6 @@ A PyTorch implementation of YOLOv4.
 │   ├── camera.py           a demo camera
     ├── distillation.py     individual and relational distillers
 │   ├── coco_annotation.py  coco dataset generator for annotations 
-|                           (Use `git submodule update --init submodule-path` 
-|                           to clone folder yolov4-PyTorch)
 │   ├── config.py
 │   ├── darknet2pytorch.py
 ├── ├── mobilenetv2.py
@@ -49,9 +47,11 @@ A PyTorch implementation of YOLOv4.
 ```
 
 # 1. Data Preprocessing
+
 ## 1.1 Download coco 2017
     - coco train data (http://images.cocodataset.org/zips/train2017.zip)
     - coco validation data (http://images.cocodataset.org/zips/val2017.zip)
+    
 ## 1.2 Transform data
     For coco dataset, you can use tool/coco_annotation.py.
     ```
@@ -61,8 +61,9 @@ A PyTorch implementation of YOLOv4.
     ...
     ...
     ```
-# 2. Train
-## 2.1 Set training parameters, links for the dataset annotations file, and checkpoint to upload.
+# 2. Training
+
+## 2.1 Set training parameters, links for the dataset annotations file, and teacher and student checkpoint.
     you can set parameters in:
     - cfg.py for training with Darknet.
     
@@ -75,7 +76,7 @@ A PyTorch implementation of YOLOv4.
     ```
      python trainmnv2_.py -g [GPU_ID] -dir [Dataset direction] ...
     ```
-- To train distilled models 
+- To training distilled models 
     ```
      python trainrkd.py -distilltype ['RsKD', 'RKD', 'FKD' or 'MKD'] -g [GPU_ID] -dir [Dataset direction] ...
     ```
