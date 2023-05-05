@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 '''
-@Time          : 2020/05/06 15:07
-@Author        : Tianxiaomo
-@File          : train.py
+@Time          : 2023/02/06 15:07
+@Author        : Tchenko
+@File          : trainmn2_.py
 @Noice         :
 @Modificattion :
     @Author    :
